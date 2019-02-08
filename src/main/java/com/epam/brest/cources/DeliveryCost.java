@@ -1,38 +1,39 @@
 package com.epam.brest.cources;
 
-import com.epam.brest.cources.calc.CalculatorImpl;
+import com.epam.brest.cources.calc.Calculator;
 import com.epam.brest.cources.calc.DataItem;
+import com.epam.brest.cources.files.CSVFileReader;
 import com.epam.brest.cources.files.FileReader;
 import com.epam.brest.cources.menu.CorrectValue;
 import com.epam.brest.cources.menu.EnteredValue;
 import com.epam.brest.cources.menu.EnteredValue.Types;
 import com.epam.brest.cources.menu.ExitValue;
 import com.epam.brest.cources.menu.IncorrectValue;
-import com.epam.brest.cources.files.CSVFileReader;
 import com.epam.brest.cources.selector.PriceSelector;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Scanner;
 
 
 public class DeliveryCost {
-
-    private static final String PREFIX = "Enter ";
-    //private static final String[] MESSAGES = {"weight of cargo in kg", "distance in km", "price per kg", "price per km"};
-    private static final String[] MESSAGES = {"weight of cargo in kg", "distance in km"};
-    private static final String POSTFIX = " or 'q' for quit";
-    private static final BigDecimal[] ENTERED_VALUES = new BigDecimal[2];
 
     private static final String QUIT_SYMBOL = "q";
 
     private static final Logger LOGGER = LogManager.getLogger();
 
     public static void main(String[] args) throws IOException {
+
+        ApplicationContext applicationContext = new ClassPathXmlApplicationContext("app.xml", "calc.xml");
+        Properties messages = (Properties) applicationContext.getBean("appMessages");
+        Calculator calculator = applicationContext.getBean(Calculator.class);
 
         DeliveryCost deliveryCost = new DeliveryCost();
         Scanner scanner = new Scanner(System.in);
@@ -48,39 +49,29 @@ public class DeliveryCost {
             throw new FileNotFoundException("File with prices per km not found.");
         }
 
+        EnteredValue mass = deliveryCost.receiveValueFromConsole(messages.getProperty("weight.message"), scanner);
+        if (deliveryCost.exitNotNeeded(mass)) {
+            EnteredValue distance = deliveryCost.receiveValueFromConsole(messages.getProperty("distance.message"), scanner);
+            if (deliveryCost.exitNotNeeded(distance)) {
+                PriceSelector selector = new PriceSelector();
 
-        //Fill array by values
-        EnteredValue ew = null;
-        for (int i = 0; i < MESSAGES.length; i++) {
-            ew = deliveryCost.receiveValueFromConsole(PREFIX + MESSAGES[i] + POSTFIX, scanner);
-            switch (ew.getType()) {
-                case VALUE:
-                    ENTERED_VALUES[i] = ((CorrectValue) ew).getValue();
-                    break;
-                default:
-                    i = MESSAGES.length;
+                DataItem dataItem = new DataItem();
+                dataItem.setWeight(((CorrectValue) mass).getValue());
+                dataItem.setDistance(((CorrectValue) mass).getValue());
+                dataItem.setPricePerKg(selector.selectPriceValue(kgs, dataItem.getWeight()));
+                dataItem.setPricePerKm(selector.selectPriceValue(kms, dataItem.getDistance()));
+
+                BigDecimal calcResult = calculator.calc(dataItem);
+                LOGGER.info("Data item: {}", dataItem);
+                LOGGER.info("Delivery cost: {} {}", dataItem, calcResult);
             }
         }
-
-        PriceSelector selector = new PriceSelector();
-
-        //Calculate result
-        if (ew != null && ew.getType() != Types.EXIT) {
-            DataItem dataItem = new DataItem();
-            dataItem.setWeight(ENTERED_VALUES[0]);
-            dataItem.setDistance(ENTERED_VALUES[1]);
-            dataItem.setPricePerKg(selector.selectPriceValue(kgs, dataItem.getWeight()));
-            dataItem.setPricePerKm(selector.selectPriceValue(kms, dataItem.getDistance()));
-
-            BigDecimal calcResult = new CalculatorImpl().calc(dataItem);
-            LOGGER.info("Data item: {}", dataItem);
-            LOGGER.info("Delivery cost: {} {}", dataItem, calcResult);
-        }
-
-        System.out.println("Bye!");
+        System.out.println(messages.getProperty("bye.message"));
     }
 
-
+    private boolean exitNotNeeded(EnteredValue enteredValue) {
+        return enteredValue != null && enteredValue.getType() != Types.EXIT;
+    }
 
     private EnteredValue receiveValueFromConsole(String message, Scanner scanner) {
         EnteredValue result = new IncorrectValue();
